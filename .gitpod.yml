@@ -1,0 +1,13 @@
+github:
+  prebuilds:
+    master: true
+    branches: true
+    pullRequests: true
+    pullRequestsFromForks: true
+    addComment: false
+    addBadge: false
+    addCheck: true
+
+tasks:
+  - init: |
+      yarn install
