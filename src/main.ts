@@ -1,18 +1,29 @@
 import * as core from '@actions/core'
-import {wait} from './wait'
+import { deploy } from './deploy'
 
-async function run(): Promise<void> {
+const run = async (): Promise<void> => {
   try {
-    const ms: string = core.getInput('milliseconds')
-    core.debug(`Waiting ${ms} milliseconds ...`) // debug is only output if you set the secret `ACTIONS_RUNNER_DEBUG` to true
+    const ebsAppName: string = core.getInput('ebs-app-name')
+    const ebsEnvironmentName: string = core.getInput('ebs-environment-name')
+    const s3Bucket: string = core.getInput('s3-bucket')
+    const s3Key: string = core.getInput('s3-key')
+    const awsRegion: string = core.getInput('aws-region')
+    const awsPlatform: string = core.getInput('aws-platform')
+    const filePath: string = core.getInput('file-path')
+    const versionLabel: string = core.getInput('version-label')
 
-    core.debug(new Date().toTimeString())
-    await wait(parseInt(ms, 10))
-    core.debug(new Date().toTimeString())
-
-    core.setOutput('time', new Date().toTimeString())
+    deploy(
+      ebsAppName,
+      ebsEnvironmentName,
+      s3Bucket,
+      s3Key,
+      awsRegion,
+      awsPlatform,
+      filePath,
+      versionLabel
+    )
   } catch (error) {
-    core.setFailed(error.message)
+    console.error(error)
   }
 }
 
