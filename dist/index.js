@@ -71,81 +71,95 @@ exports.deploy = void 0;
 const client_s3_1 = __nccwpck_require__(9690);
 const client_elastic_beanstalk_1 = __nccwpck_require__(4815);
 const fs = __importStar(__nccwpck_require__(5747));
-const uploadAppBundle = (awsRegion, s3Bucket, s3Key, filePath) => __awaiter(void 0, void 0, void 0, function* () {
-    try {
-        const client = new client_s3_1.S3Client({
-            region: awsRegion
-        });
-        const fileStream = fs.createReadStream(filePath);
-        fileStream.on('error', function (error) {
-            throw new Error(error.message);
-        });
-        const params = {
-            Bucket: s3Bucket,
-            Key: s3Key,
-            Body: fileStream
-        };
-        const command = new client_s3_1.PutObjectCommand(params);
-        yield client.send(command);
-    }
-    catch (error) {
-        throw new Error(JSON.stringify(error));
-    }
+const uploadAppSourceBundle = (awsRegion, s3Bucket, s3Key, filePath) => __awaiter(void 0, void 0, void 0, function* () {
+    const client = new client_s3_1.S3Client({
+        region: awsRegion
+    });
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.on('error', function (error) {
+        throw new Error(error.message);
+    });
+    const params = {
+        Bucket: s3Bucket,
+        Key: s3Key,
+        Body: fileStream
+    };
+    const command = new client_s3_1.PutObjectCommand(params);
+    yield client.send(command);
 });
 const createAppVersion = (awsRegion, ebsAppName, s3Bucket, s3Key, versionLabel) => __awaiter(void 0, void 0, void 0, function* () {
-    try {
-        const client = new client_elastic_beanstalk_1.ElasticBeanstalkClient({
-            region: awsRegion
+    const client = new client_elastic_beanstalk_1.ElasticBeanstalkClient({
+        region: awsRegion
+    });
+    const params = {
+        ApplicationName: ebsAppName,
+        AutoCreateApplication: true,
+        Process: true,
+        SourceBundle: {
+            S3Bucket: s3Bucket,
+            S3Key: s3Key
+        },
+        VersionLabel: versionLabel
+    };
+    const command = new client_elastic_beanstalk_1.CreateApplicationVersionCommand(params);
+    yield client.send(command);
+});
+const validateAppEnvConfig = (awsRegion, ebsAppName, versionLabel, processTimeout) => __awaiter(void 0, void 0, void 0, function* () {
+    const INTERVAL = 20;
+    const PROCESSED_STATUS = 'PROCESSED';
+    const client = new client_elastic_beanstalk_1.ElasticBeanstalkClient({
+        region: awsRegion
+    });
+    const command = new client_elastic_beanstalk_1.DescribeApplicationVersionsCommand({
+        ApplicationName: ebsAppName,
+        VersionLabels: [versionLabel]
+    });
+    const delay = (seconds) => __awaiter(void 0, void 0, void 0, function* () {
+        return new Promise((resolve) => {
+            setTimeout(resolve, seconds * 1000);
         });
-        const params = {
-            ApplicationName: ebsAppName,
-            AutoCreateApplication: true,
-            Process: true,
-            SourceBundle: {
-                S3Bucket: s3Bucket,
-                S3Key: s3Key
-            },
-            VersionLabel: versionLabel
-        };
-        const command = new client_elastic_beanstalk_1.CreateApplicationCommand(params);
-        yield client.send(command);
+    });
+    const getProcessStatus = () => __awaiter(void 0, void 0, void 0, function* () {
+        var _a;
+        const response = (yield client.send(command)).ApplicationVersions;
+        if (!response) {
+            throw new Error(`Application version (${versionLabel}) not found: ${response}`);
+        }
+        return ((_a = response[0].Status) === null || _a === void 0 ? void 0 : _a.toUpperCase()) === PROCESSED_STATUS;
+    });
+    let attempts = processTimeout / INTERVAL;
+    let isProcessed = yield getProcessStatus();
+    while (attempts > 0 && !isProcessed) {
+        attempts--;
+        yield delay(INTERVAL);
+        isProcessed = yield getProcessStatus();
     }
-    catch (error) {
-        throw new Error(JSON.stringify(error));
+    if (!isProcessed) {
+        throw new Error(`Timed out while waiting for application version (${versionLabel}) to recieve status: ${PROCESSED_STATUS}`);
     }
 });
-const deployApp = (awsRegion, ebsAppName, ebsEnvironmentName, awsPlatform, versionLabel) => __awaiter(void 0, void 0, void 0, function* () {
-    try {
-        const client = new client_elastic_beanstalk_1.ElasticBeanstalkClient({
-            region: awsRegion
-        });
-        const params = {
-            ApplicationName: ebsAppName,
-            EnvironmentName: ebsEnvironmentName,
-            VersionLabel: versionLabel,
-            PlatformArn: awsPlatform
-        };
-        const command = new client_elastic_beanstalk_1.UpdateEnvironmentCommand(params);
-        yield client.send(command);
-    }
-    catch (error) {
-        throw new Error(JSON.stringify(error));
-    }
+const deployApp = (awsRegion, ebsAppName, ebsEnvironmentName, versionLabel) => __awaiter(void 0, void 0, void 0, function* () {
+    const client = new client_elastic_beanstalk_1.ElasticBeanstalkClient({
+        region: awsRegion
+    });
+    const params = {
+        ApplicationName: ebsAppName,
+        EnvironmentName: ebsEnvironmentName,
+        VersionLabel: versionLabel
+    };
+    const command = new client_elastic_beanstalk_1.UpdateEnvironmentCommand(params);
+    yield client.send(command);
 });
-const deploy = (ebsAppName, ebsEnvironmentName, s3Bucket, s3Key, awsRegion, awsPlatform, filePath, versionLabel) => __awaiter(void 0, void 0, void 0, function* () {
-    try {
-        // upload app bundle to S3
-        yield uploadAppBundle(awsRegion, s3Bucket, s3Key, filePath);
-        // create new application version on ElasticBeanstalk
-        // using S3 file as source bundle
-        yield createAppVersion(awsRegion, ebsAppName, s3Bucket, s3Key, versionLabel);
-        // deploy new application version to application
-        // environment on ElasticBeanstalk
-        yield deployApp(awsRegion, ebsAppName, ebsEnvironmentName, awsPlatform, versionLabel);
-    }
-    catch (error) {
-        console.error(error);
-    }
+const deploy = (ebsAppName, ebsEnvironmentName, s3Bucket, s3Key, awsRegion, filePath, versionLabel, processTimeout) => __awaiter(void 0, void 0, void 0, function* () {
+    // upload app source bundle to S3
+    yield uploadAppSourceBundle(awsRegion, s3Bucket, s3Key, filePath);
+    // create new app version from S3 source in Elastic Beanstalk
+    yield createAppVersion(awsRegion, ebsAppName, s3Bucket, s3Key, versionLabel);
+    // ensure Elastic Beanstalk config (if any) in new app version
+    // was successfully pre-processed and validated
+    yield validateAppEnvConfig(awsRegion, ebsAppName, versionLabel, processTimeout);
+    // deploy app to Elastic Beanstalk environment
+    yield deployApp(awsRegion, ebsAppName, ebsEnvironmentName, versionLabel);
 });
 exports.deploy = deploy;
 
@@ -195,13 +209,17 @@ const run = () => __awaiter(void 0, void 0, void 0, function* () {
         const s3Bucket = core.getInput('s3-bucket');
         const s3Key = core.getInput('s3-key');
         const awsRegion = core.getInput('aws-region');
-        const awsPlatform = core.getInput('aws-platform');
         const filePath = core.getInput('file-path');
         const versionLabel = core.getInput('version-label');
-        (0, deploy_1.deploy)(ebsAppName, ebsEnvironmentName, s3Bucket, s3Key, awsRegion, awsPlatform, filePath, versionLabel);
+        const processTimeout = core.getInput('process-timeout');
+        const timeout = Number(processTimeout);
+        if (isNaN(timeout) || timeout < 0) {
+            throw new Error('process-timeout should be a positive integer');
+        }
+        yield (0, deploy_1.deploy)(ebsAppName, ebsEnvironmentName, s3Bucket, s3Key, awsRegion, filePath, versionLabel, timeout);
     }
     catch (error) {
-        console.error(error);
+        core.setFailed(error.message);
     }
 });
 run();

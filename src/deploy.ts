@@ -1,38 +1,35 @@
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
 import {
   ElasticBeanstalkClient,
-  CreateApplicationCommand,
-  UpdateEnvironmentCommand
+  CreateApplicationVersionCommand,
+  UpdateEnvironmentCommand,
+  DescribeApplicationVersionsCommand
 } from '@aws-sdk/client-elastic-beanstalk'
 import * as fs from 'fs'
 
-const uploadAppBundle = async (
+const uploadAppSourceBundle = async (
   awsRegion: string,
   s3Bucket: string,
   s3Key: string,
   filePath: string
 ): Promise<void> => {
-  try {
-    const client = new S3Client({
-      region: awsRegion
-    })
+  const client = new S3Client({
+    region: awsRegion
+  })
 
-    const fileStream = fs.createReadStream(filePath)
-    fileStream.on('error', function (error) {
-      throw new Error(error.message)
-    })
+  const fileStream = fs.createReadStream(filePath)
+  fileStream.on('error', function (error) {
+    throw new Error(error.message)
+  })
 
-    const params = {
-      Bucket: s3Bucket,
-      Key: s3Key,
-      Body: fileStream
-    }
-
-    const command = new PutObjectCommand(params)
-    await client.send(command)
-  } catch (error) {
-    throw new Error(JSON.stringify(error))
+  const params = {
+    Bucket: s3Bucket,
+    Key: s3Key,
+    Body: fileStream
   }
+
+  const command = new PutObjectCommand(params)
+  await client.send(command)
 }
 
 const createAppVersion = async (
@@ -42,26 +39,70 @@ const createAppVersion = async (
   s3Key: string,
   versionLabel: string
 ): Promise<void> => {
-  try {
-    const client = new ElasticBeanstalkClient({
-      region: awsRegion
+  const client = new ElasticBeanstalkClient({
+    region: awsRegion
+  })
+
+  const params = {
+    ApplicationName: ebsAppName,
+    AutoCreateApplication: true,
+    Process: true,
+    SourceBundle: {
+      S3Bucket: s3Bucket,
+      S3Key: s3Key
+    },
+    VersionLabel: versionLabel
+  }
+
+  const command = new CreateApplicationVersionCommand(params)
+  await client.send(command)
+}
+
+const validateAppEnvConfig = async (
+  awsRegion: string,
+  ebsAppName: string,
+  versionLabel: string,
+  processTimeout: number
+): Promise<void> => {
+  const INTERVAL = 20
+  const PROCESSED_STATUS = 'PROCESSED'
+
+  const client = new ElasticBeanstalkClient({
+    region: awsRegion
+  })
+
+  const command = new DescribeApplicationVersionsCommand({
+    ApplicationName: ebsAppName,
+    VersionLabels: [versionLabel]
+  })
+
+  const delay = async (seconds: number): Promise<void> =>
+    new Promise((resolve) => {
+      setTimeout(resolve, seconds * 1000)
     })
 
-    const params = {
-      ApplicationName: ebsAppName,
-      AutoCreateApplication: true,
-      Process: true,
-      SourceBundle: {
-        S3Bucket: s3Bucket,
-        S3Key: s3Key
-      },
-      VersionLabel: versionLabel
+  const getProcessStatus = async (): Promise<boolean> => {
+    const response = (await client.send(command)).ApplicationVersions
+    if (!response) {
+      throw new Error(
+        `Application version (${versionLabel}) not found: ${response}`
+      )
     }
+    return response[0].Status?.toUpperCase() === PROCESSED_STATUS
+  }
 
-    const command = new CreateApplicationCommand(params)
-    await client.send(command)
-  } catch (error) {
-    throw new Error(JSON.stringify(error))
+  let attempts = processTimeout / INTERVAL
+  let isProcessed = await getProcessStatus()
+  while (attempts > 0 && !isProcessed) {
+    attempts--
+    await delay(INTERVAL)
+    isProcessed = await getProcessStatus()
+  }
+
+  if (!isProcessed) {
+    throw new Error(
+      `Timed out while waiting for application version (${versionLabel}) to recieve status: ${PROCESSED_STATUS}`
+    )
   }
 }
 
@@ -69,26 +110,20 @@ const deployApp = async (
   awsRegion: string,
   ebsAppName: string,
   ebsEnvironmentName: string,
-  awsPlatform: string,
   versionLabel: string
 ): Promise<void> => {
-  try {
-    const client = new ElasticBeanstalkClient({
-      region: awsRegion
-    })
+  const client = new ElasticBeanstalkClient({
+    region: awsRegion
+  })
 
-    const params = {
-      ApplicationName: ebsAppName,
-      EnvironmentName: ebsEnvironmentName,
-      VersionLabel: versionLabel,
-      PlatformArn: awsPlatform
-    }
-
-    const command = new UpdateEnvironmentCommand(params)
-    await client.send(command)
-  } catch (error) {
-    throw new Error(JSON.stringify(error))
+  const params = {
+    ApplicationName: ebsAppName,
+    EnvironmentName: ebsEnvironmentName,
+    VersionLabel: versionLabel
   }
+
+  const command = new UpdateEnvironmentCommand(params)
+  await client.send(command)
 }
 
 export const deploy = async (
@@ -97,28 +132,25 @@ export const deploy = async (
   s3Bucket: string,
   s3Key: string,
   awsRegion: string,
-  awsPlatform: string,
   filePath: string,
-  versionLabel: string
+  versionLabel: string,
+  processTimeout: number
 ): Promise<void> => {
-  try {
-    // upload app bundle to S3
-    await uploadAppBundle(awsRegion, s3Bucket, s3Key, filePath)
+  // upload app source bundle to S3
+  await uploadAppSourceBundle(awsRegion, s3Bucket, s3Key, filePath)
 
-    // create new application version on ElasticBeanstalk
-    // using S3 file as source bundle
-    await createAppVersion(awsRegion, ebsAppName, s3Bucket, s3Key, versionLabel)
+  // create new app version from S3 source in Elastic Beanstalk
+  await createAppVersion(awsRegion, ebsAppName, s3Bucket, s3Key, versionLabel)
 
-    // deploy new application version to application
-    // environment on ElasticBeanstalk
-    await deployApp(
-      awsRegion,
-      ebsAppName,
-      ebsEnvironmentName,
-      awsPlatform,
-      versionLabel
-    )
-  } catch (error) {
-    console.error(error)
-  }
+  // ensure Elastic Beanstalk config (if any) in new app version
+  // was successfully pre-processed and validated
+  await validateAppEnvConfig(
+    awsRegion,
+    ebsAppName,
+    versionLabel,
+    processTimeout
+  )
+
+  // deploy app to Elastic Beanstalk environment
+  await deployApp(awsRegion, ebsAppName, ebsEnvironmentName, versionLabel)
 }

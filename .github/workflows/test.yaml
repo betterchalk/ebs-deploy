@@ -1,0 +1,46 @@
+name: 'build-test'
+
+env:
+  DEPLOY_ID: ${{ github.run_id }}-${{ github.run_number }}
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+            ref: ${{ github.event.pull_request.head.sha }}
+      - run: |
+          yarn install
+          yarn build
+          yarn package
+          yarn test
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+            ref: ${{ github.event.pull_request.head.sha }}
+      - uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACEESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - run: |
+          cd test-app
+          zip -r ${{ secrets.EBS_APP_NAME }}-${{ env.DEPLOY_ID }}.zip .
+      - uses: ./
+        with:
+          ebs-app-name: ${{ secrets.EBS_APP_NAME }}
+          ebs-environment-name: ${{ secrets.EBS_ENVIRONMENT_NAME }}
+          s3-bucket: ${{ secrets.S3_BUCKET }}
+          s3-key: ${{ secrets.EBS_APP_NAME }}-${{ env.DEPLOY_ID }}.zip
+          aws-region: ${{ secrets.AWS_REGION }}
+          file-path: ./test-app/${{ secrets.EBS_APP_NAME }}-${{ env.DEPLOY_ID }}.zip
+          version-label: ${{ secrets.EBS_APP_NAME }}-${{ env.DEPLOY_ID }}

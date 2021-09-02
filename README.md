@@ -10,12 +10,11 @@ with:
   s3-bucket: myapp-bucket
   s3-key: myapp-v0.1.0.zip
   aws-region: us-east-2
-  aws-platform: Docker
-  aws-access-key-id: ABC123DEF456
-  aws-secret-access-key: 3xU9pK450o3QWeeJ87x
   file-path: ./myapp.zip
   version-label: myapp-v0.1.0
 ```
+
+Requires AWS authentication to be in present in workflow environment. (see [test.yaml](.github/workflows/test.yaml))
 
 ---
 
