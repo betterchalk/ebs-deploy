@@ -8,22 +8,27 @@ const run = async (): Promise<void> => {
     const s3Bucket: string = core.getInput('s3-bucket')
     const s3Key: string = core.getInput('s3-key')
     const awsRegion: string = core.getInput('aws-region')
-    const awsPlatform: string = core.getInput('aws-platform')
     const filePath: string = core.getInput('file-path')
     const versionLabel: string = core.getInput('version-label')
+    const processTimeout: string = core.getInput('process-timeout')
 
-    deploy(
+    const timeout = Number(processTimeout)
+    if (isNaN(timeout) || timeout < 0) {
+      throw new Error('process-timeout should be a positive integer')
+    }
+
+    await deploy(
       ebsAppName,
       ebsEnvironmentName,
       s3Bucket,
       s3Key,
       awsRegion,
-      awsPlatform,
       filePath,
-      versionLabel
+      versionLabel,
+      timeout
     )
-  } catch (error) {
-    console.error(error)
+  } catch (error: any) {
+    core.setFailed(error.message)
   }
 }
 
