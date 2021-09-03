@@ -14,7 +14,7 @@ with:
   version-label: myapp-v0.1.0
 ```
 
-Requires AWS authentication to be in present in workflow environment. (see [test.yaml](.github/workflows/test.yaml))
+Requires AWS authentication to be present in workflow environment. (see [test.yaml](.github/workflows/test.yaml))
 
 ---
 
