@@ -1,6 +1,9 @@
 name: 'Deploy AWS EBS Application'
 description: 'Github Action workflow to deploy apps using AWS S3 and ElasticBeanstalk'
 author: 'Betterchalk'
+branding:
+  color: 'green'
+  icon: 'refresh-cw'
 
 inputs:
   ebs-app-name: 
