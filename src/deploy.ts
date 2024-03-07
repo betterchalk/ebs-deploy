@@ -6,15 +6,18 @@ import {
   DescribeApplicationVersionsCommand
 } from '@aws-sdk/client-elastic-beanstalk'
 import * as fs from 'fs'
+import * as core from '@actions/core'
 
 const uploadAppSourceBundle = async (
   awsRegion: string,
   s3Bucket: string,
   s3Key: string,
-  filePath: string
+  filePath: string,
+  credentials: Credentials
 ): Promise<void> => {
   const client = new S3Client({
-    region: awsRegion
+    region: awsRegion,
+    credentials
   })
 
   const fileStream = fs.createReadStream(filePath)
@@ -37,10 +40,12 @@ const createAppVersion = async (
   ebsAppName: string,
   s3Bucket: string,
   s3Key: string,
-  versionLabel: string
+  versionLabel: string,
+   credentials: Credentials
 ): Promise<void> => {
   const client = new ElasticBeanstalkClient({
-    region: awsRegion
+    region: awsRegion,
+    credentials
   })
 
   const params = {
@@ -62,13 +67,15 @@ const validateAppEnvConfig = async (
   awsRegion: string,
   ebsAppName: string,
   versionLabel: string,
-  processTimeout: number
+  processTimeout: number,
+   credentials: Credentials
 ): Promise<void> => {
   const INTERVAL = 20
   const PROCESSED_STATUS = 'PROCESSED'
 
   const client = new ElasticBeanstalkClient({
-    region: awsRegion
+    region: awsRegion,
+    credentials
   })
 
   const command = new DescribeApplicationVersionsCommand({
@@ -110,10 +117,12 @@ const deployApp = async (
   awsRegion: string,
   ebsAppName: string,
   ebsEnvironmentName: string,
-  versionLabel: string
+  versionLabel: string,
+   credentials: Credentials
 ): Promise<void> => {
   const client = new ElasticBeanstalkClient({
-    region: awsRegion
+    region: awsRegion,
+    credentials
   })
 
   const params = {
@@ -125,7 +134,11 @@ const deployApp = async (
   const command = new UpdateEnvironmentCommand(params)
   await client.send(command)
 }
-
+type Credentials = {
+  awsAccessKeyId: string,
+  awsSecretAccessKey: string,
+  awsSessionToken: string
+}
 export const deploy = async (
   ebsAppName: string,
   ebsEnvironmentName: string,
@@ -134,23 +147,29 @@ export const deploy = async (
   awsRegion: string,
   filePath: string,
   versionLabel: string,
-  processTimeout: number
+  processTimeout: number,
+  credentials: Credentials
 ): Promise<void> => {
   // upload app source bundle to S3
-  await uploadAppSourceBundle(awsRegion, s3Bucket, s3Key, filePath)
+  core.debug('upload app source bundle to S3')
+  await uploadAppSourceBundle(awsRegion, s3Bucket, s3Key, filePath, credentials)
 
   // create new app version from S3 source in Elastic Beanstalk
-  await createAppVersion(awsRegion, ebsAppName, s3Bucket, s3Key, versionLabel)
+  core.debug('create new app version from S3 source in Elastic Beanstalk')
+  await createAppVersion(awsRegion, ebsAppName, s3Bucket, s3Key, versionLabel, credentials)
 
   // ensure Elastic Beanstalk config (if any) in new app version
   // was successfully pre-processed and validated
+  core.debug('ensure config  app was successfully pre-processed and validated')
   await validateAppEnvConfig(
     awsRegion,
     ebsAppName,
     versionLabel,
-    processTimeout
+    processTimeout,
+    credentials
   )
 
   // deploy app to Elastic Beanstalk environment
-  await deployApp(awsRegion, ebsAppName, ebsEnvironmentName, versionLabel)
+  core.debug('deploy app to Elastic Beanstalk environment')
+  await deployApp(awsRegion, ebsAppName, ebsEnvironmentName, versionLabel, credentials)
 }

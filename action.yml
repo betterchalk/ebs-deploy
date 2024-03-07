@@ -27,12 +27,22 @@ inputs:
   version-label: 
     required: true
     description: 'Unique string to use as app version label (e.g. myapp-v0.1.0)'
+  aws-access-key-id: 
+    required: true
+    description: AWS access key credentials'
+  aws-secret-access-key: 
+    required: true
+    description: 'AWS secret access key credentials'
+  aws-session-token: 
+    required: true
+    description: 'AWS session key credentials'
   process-timeout: 
     required: false
     default: '300'
     description: 'Max duration to wait for AWS to pre-process and validate the environment 
     manifest (env.yaml) and configuration files (*.config files in the .ebextensions folder) 
     in the source bundle (if any). Value is in seconds (e.g. 300 - which means 5mins)'
+
 
 runs:
   using: 'node20'
