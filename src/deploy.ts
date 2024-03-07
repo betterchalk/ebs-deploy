@@ -11,10 +11,12 @@ const uploadAppSourceBundle = async (
   awsRegion: string,
   s3Bucket: string,
   s3Key: string,
-  filePath: string
+  filePath: string,
+  credentials: Credentials
 ): Promise<void> => {
   const client = new S3Client({
-    region: awsRegion
+    region: awsRegion,
+    credentials
   })
 
   const fileStream = fs.createReadStream(filePath)
@@ -37,10 +39,12 @@ const createAppVersion = async (
   ebsAppName: string,
   s3Bucket: string,
   s3Key: string,
-  versionLabel: string
+  versionLabel: string,
+   credentials: Credentials
 ): Promise<void> => {
   const client = new ElasticBeanstalkClient({
-    region: awsRegion
+    region: awsRegion,
+    credentials
   })
 
   const params = {
@@ -62,13 +66,15 @@ const validateAppEnvConfig = async (
   awsRegion: string,
   ebsAppName: string,
   versionLabel: string,
-  processTimeout: number
+  processTimeout: number,
+   credentials: Credentials
 ): Promise<void> => {
   const INTERVAL = 20
   const PROCESSED_STATUS = 'PROCESSED'
 
   const client = new ElasticBeanstalkClient({
-    region: awsRegion
+    region: awsRegion,
+    credentials
   })
 
   const command = new DescribeApplicationVersionsCommand({
@@ -110,10 +116,12 @@ const deployApp = async (
   awsRegion: string,
   ebsAppName: string,
   ebsEnvironmentName: string,
-  versionLabel: string
+  versionLabel: string,
+   credentials: Credentials
 ): Promise<void> => {
   const client = new ElasticBeanstalkClient({
-    region: awsRegion
+    region: awsRegion,
+    credentials
   })
 
   const params = {
@@ -125,7 +133,11 @@ const deployApp = async (
   const command = new UpdateEnvironmentCommand(params)
   await client.send(command)
 }
-
+type Credentials = {
+  awsAccessKeyId: string,
+  awsSecretAccessKey: string,
+  awsSessionToken: string
+}
 export const deploy = async (
   ebsAppName: string,
   ebsEnvironmentName: string,
@@ -134,13 +146,14 @@ export const deploy = async (
   awsRegion: string,
   filePath: string,
   versionLabel: string,
-  processTimeout: number
+  processTimeout: number,
+  credentials: Credentials
 ): Promise<void> => {
   // upload app source bundle to S3
-  await uploadAppSourceBundle(awsRegion, s3Bucket, s3Key, filePath)
+  await uploadAppSourceBundle(awsRegion, s3Bucket, s3Key, filePath, credentials)
 
   // create new app version from S3 source in Elastic Beanstalk
-  await createAppVersion(awsRegion, ebsAppName, s3Bucket, s3Key, versionLabel)
+  await createAppVersion(awsRegion, ebsAppName, s3Bucket, s3Key, versionLabel, credentials)
 
   // ensure Elastic Beanstalk config (if any) in new app version
   // was successfully pre-processed and validated
@@ -148,9 +161,10 @@ export const deploy = async (
     awsRegion,
     ebsAppName,
     versionLabel,
-    processTimeout
+    processTimeout,
+    credentials
   )
 
   // deploy app to Elastic Beanstalk environment
-  await deployApp(awsRegion, ebsAppName, ebsEnvironmentName, versionLabel)
+  await deployApp(awsRegion, ebsAppName, ebsEnvironmentName, versionLabel, credentials)
 }

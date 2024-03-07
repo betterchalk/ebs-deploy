@@ -11,12 +11,21 @@ const run = async (): Promise<void> => {
     const filePath: string = core.getInput('file-path')
     const versionLabel: string = core.getInput('version-label')
     const processTimeout: string = core.getInput('process-timeout')
+    const awsAccessKeyId: string = core.getInput('aws-access-key-id')
+    const awsSecretAccessKey: string = core.getInput('aws-secret-access-key')
+    const awsSessionToken: string = core.getInput('aws-session-token')
 
     const timeout = Number(processTimeout)
     if (isNaN(timeout) || timeout < 0) {
       throw new Error('process-timeout should be a positive integer')
     }
 
+    const credentials = {
+        awsAccessKeyId,
+        awsSecretAccessKey,
+        awsSessionToken
+
+      }
     await deploy(
       ebsAppName,
       ebsEnvironmentName,
@@ -25,7 +34,9 @@ const run = async (): Promise<void> => {
       awsRegion,
       filePath,
       versionLabel,
-      timeout
+      timeout,
+      credentials
+       
     )
   } catch (error: any) {
     core.setFailed(error.message)
