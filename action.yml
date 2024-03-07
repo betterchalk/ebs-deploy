@@ -35,6 +35,6 @@ inputs:
     in the source bundle (if any). Value is in seconds (e.g. 300 - which means 5mins)'
 
 runs:
-  using: 'node16'
+  using: 'node20'
   main: 'dist/index.js'
 
